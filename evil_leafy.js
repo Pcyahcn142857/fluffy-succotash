@@ -24,7 +24,7 @@ elements.evil_leafy = {
 	state: "solid",
 	density: 1050,
 	forceSaveColor: true
-},
+}
 elements.dead_evil_leafy = {
 	color: ["#ff0000"],
 	behavior: [
@@ -42,7 +42,7 @@ elements.dead_evil_leafy = {
 	state: "solid",
 	density: 1050,
 	hidden: true
-},
+}
 elements.frozen_evil_leafy = {
 	color: "#00bf8c",
 	behavior: behaviors.WALL,
