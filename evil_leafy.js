@@ -1,4 +1,4 @@
-elements.evil_leafy: {
+elements.evil_leafy = {
 	color: "#ff0000",
 	behavior: behaviors.WALL,
 	reactions: {
@@ -25,7 +25,7 @@ elements.evil_leafy: {
 	density: 1050,
 	forceSaveColor: true
 },
-elements.dead_evil_leafy: {
+elements.dead_evil_leafy = {
 	color: ["#ff0000"],
 	behavior: [
 		"XX|XX|XX",
@@ -43,7 +43,7 @@ elements.dead_evil_leafy: {
 	density: 1050,
 	hidden: true
 },
-elements.frozen_evil_leafy: {
+elements.frozen_evil_leafy = {
 	color: "#00bf8c",
 	behavior: behaviors.WALL,
 	category:"life",
