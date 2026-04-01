@@ -2,12 +2,12 @@ elements.evil_leafy: {
 	color: "#ff0000",
 	behavior: behaviors.WALL,
 	reactions: {
-		"vinegar": { elem1:"dead_plant", elem2:null, chance:0.035 },
-		"baking_soda": { elem1:"dead_plant", elem2:null, chance:0.01 },
-		"bleach": { elem1:"dead_plant", elem2:null, chance:0.05 },
-		"alcohol": { elem1:"dead_plant", elem2:null, chance:0.035 },
-		"mercury": { elem1:"dead_plant", elem2:null, chance:0.01 },
-		"salt": { elem1:"dead_plant", elem2:null, chance:0.001 },
+		"vinegar": { elem1:"dead_evil_leafy", elem2:null, chance:0.035 },
+		"baking_soda": { elem1:"dead_evil_leafy", elem2:null, chance:0.01 },
+		"bleach": { elem1:"dead_evil_leafy", elem2:null, chance:0.05 },
+		"alcohol": { elem1:"dead_evil_leafy", elem2:null, chance:0.035 },
+		"mercury": { elem1:"dead_evil_leafy", elem2:null, chance:0.01 },
+		"salt": { elem1:"dead_evil_leafy", elem2:null, chance:0.001 },
 		"stench": { elem2:null, chance:0.25 },
 		"chlorine": { stain1:"#a2bf00" }
 	},
