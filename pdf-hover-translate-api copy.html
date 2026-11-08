@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PDF Hover Translator</title>
+<style>
+:root{--bg:#f4f1ea;--surface:#fffdf8;--ink:#201d18;--muted:#6f685c;--line:#ddd6c8;--accent:#b4381f;--hl:rgba(180,56,31,.22);--tip:#201d18;--tipink:#fffdf8;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16140f;--surface:#211e18;--ink:#f1ece0;--muted:#a49c8c;--line:#38332a;--accent:#ff8a6b;--hl:rgba(255,138,107,.3);--tip:#f1ece0;--tipink:#16140f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#16140f;--surface:#211e18;--ink:#f1ece0;--muted:#a49c8c;--line:#38332a;--accent:#ff8a6b;--hl:rgba(255,138,107,.3);--tip:#f1ece0;--tipink:#16140f;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--surface);z-index:10}
+h1{font:600 16px/1 Georgia,"Songti SC",serif;margin:0 auto 0 0;letter-spacing:.2px}
+h1 span{color:var(--accent)}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer}
+button:hover,.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:600}
+#zoomlbl{min-width:3.2em;text-align:center;color:var(--muted)}
+#status{color:var(--muted);font-size:13px}
+#drop{margin:8vh auto;max-width:480px;padding:48px 24px;text-align:center;border:2px dashed var(--line);border-radius:16px;background:var(--surface)}
+#drop.over{border-color:var(--accent)}
+#drop h2{font:600 22px Georgia,serif;margin:0 0 8px}
+#drop p{color:var(--muted);margin:0 0 20px}
+#pages{display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px;overflow-x:auto}
+.page{position:relative;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.18);flex:none}
+.page canvas{display:block}
+.textLayer{position:absolute;inset:0;overflow:hidden;line-height:1;opacity:1}
+.textLayer span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:pointer}
+::highlight(hw){background:var(--hl)}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--tip);color:var(--tipink);padding:8px 12px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:260px;opacity:0;transition:opacity .12s}
+#tip.show{opacity:1}
+#tip .w{font-size:12px;opacity:.7}
+#tip .zh{font:600 20px/1.3 "PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif}
+#tip .py{font-size:13px;opacity:.85}
+#tip .ex{font-size:12px;opacity:.7;margin-top:3px}
+</style>
+</head>
+<body>
+<header>
+  <h1>PDF <span>汉</span> Hover Translator</h1>
+  <span id="status"></span>
+  <button id="zout" aria-label="Zoom out">−</button><span id="zoomlbl">130%</span><button id="zin" aria-label="Zoom in">+</button>
+  <label class="btn primary" for="file">Open PDF</label>
+  <input id="file" type="file" accept=".pdf,application/pdf" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+</header>
+
+<div id="drop">
+  <h2>Drop a PDF to start reading</h2>
+  <p>Hover over (or tap) any English word to see its Chinese translation and pinyin.</p>
+  <label class="btn primary" for="file">Choose a PDF</label>
+</div>
+<div id="pages"></div>
+<div id="tip" role="tooltip"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.19.6/dist/index.js"></script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var pagesEl=$('pages'),drop=$('drop'),tip=$('tip'),status=$('status');
+  var pdfDoc=null,scale=1.3,renderId=0;
+  function setStatus(t){status.textContent=t||''}
+  function addScript(u){return new Promise(function(res,rej){var t=document.createElement('script');t.src=u;t.onload=res;t.onerror=function(){rej(new Error('load '+u))};document.head.appendChild(t)})}
+  var CDNS=[['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'],
+            ['https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js','https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js']];
+  var engineReady=(async function(){
+    for(var i=0;i<CDNS.length;i++){
+      try{
+        await addScript(CDNS[i][0]);
+        if(!window.pdfjsLib)continue;
+        pdfjsLib.GlobalWorkerOptions.workerSrc=CDNS[i][1];
+        try{await addScript(CDNS[i][1])}catch(e){}
+        return true;
+      }catch(e){console.warn(e)}
+    }
+    return false;
+  })();
+  engineReady.then(function(ok){setStatus(ok?'Ready — open a PDF':'PDF engine failed to load (check connection)')});
+
+  /* ---------- translation (MyMemory API, no AI) ---------- */
+  var cache=new Map();
+  function translate(word){
+    var key=word.toLowerCase();
+    if(cache.has(key))return cache.get(key);
+    var p=fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(key)+'&langpair=en|zh-CN')
+      .then(function(r){if(!r.ok)throw new Error('http '+r.status);return r.json()})
+      .then(function(d){
+        var zh=d&&d.responseData&&d.responseData.translatedText;
+        if(!zh||/MYMEMORY WARNING|QUERY LENGTH/i.test(zh))throw new Error('limit');
+        var py='';
+        try{if(window.pinyinPro)py=pinyinPro.pinyin(zh)}catch(e){}
+        return {zh:zh,pinyin:py};
+      });
+    cache.set(key,p);
+    p.catch(function(){cache.delete(key)});
+    return p;
+  }
+
+  /* ---------- word under cursor ---------- */
+  var WORD=/[A-Za-z0-9\u00C0-\u024F'’-]/;
+  function rangeAt(x,y){
+    if(document.caretRangeFromPoint){return document.caretRangeFromPoint(x,y)}
+    if(document.caretPositionFromPoint){var c=document.caretPositionFromPoint(x,y);if(!c)return null;var r=document.createRange();r.setStart(c.offsetNode,c.offset);r.collapse(true);return r}
+    return null;
+  }
+  function wordAt(x,y){
+    var r=rangeAt(x,y);if(!r)return null;
+    var n=r.startContainer;if(n.nodeType!==3||!n.parentElement||!n.parentElement.closest('.textLayer'))return null;
+    var t=n.textContent,i=r.startOffset,s=i,e=i;
+    if(i>=t.length||!WORD.test(t[i])){if(i>0&&WORD.test(t[i-1]))i--;else return null;s=e=i}
+    while(s>0&&WORD.test(t[s-1]))s--;
+    while(e<t.length&&WORD.test(t[e]))e++;
+    var w=t.slice(s,e).replace(/^[-'’]+|[-'’]+$/g,'');
+    if(!w||!/[A-Za-z]/.test(w))return null;
+    var rr=document.createRange();rr.setStart(n,s);rr.setEnd(n,e);
+    var rect=rr.getBoundingClientRect();
+    // make sure pointer is actually over the word box
+    if(x<rect.left-2||x>rect.right+2||y<rect.top-3||y>rect.bottom+3)return null;
+    return {word:w,range:rr,rect:rect,ctx:t.trim().slice(0,160)};
+  }
+
+  /* ---------- tooltip ---------- */
+  var cur=null,token=0,timer=null;
+  function hide(){tip.classList.remove('show');if(window.CSS&&CSS.highlights)CSS.highlights.delete('hw');cur=null;token++}
+  function place(rect){
+    var tw=tip.offsetWidth,th=tip.offsetHeight;
+    var left=Math.min(Math.max(8,rect.left+rect.width/2-tw/2),window.innerWidth-tw-8);
+    var top=rect.top-th-8;if(top<60)top=rect.bottom+8;
+    tip.style.left=left+'px';tip.style.top=top+'px';
+  }
+  function esc(s){var d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+  function show(hit){
+    var my=++token;cur=hit.word;
+    if(window.CSS&&CSS.highlights&&window.Highlight)CSS.highlights.set('hw',new Highlight(hit.range));
+    tip.innerHTML='<div class="w">'+esc(hit.word)+'</div><div class="py">Translating…</div>';
+    tip.classList.add('show');place(hit.rect);
+    translate(hit.word).then(function(r){
+      if(my!==token)return;
+      tip.innerHTML='<div class="w">'+esc(hit.word)+''+'</div><div class="zh">'+esc(r.zh)+'</div><div class="py">'+esc(r.pinyin)+'</div>';
+      place(hit.rect);
+    }).catch(function(err){
+      if(my!==token)return;
+      console.error(err);var m=String(err&&err.message||err);var msg=m==='limit'?'Daily free limit reached.':/^http/.test(m)?'Translation service error ('+esc(m)+').':/fetch|network/i.test(m)?'Couldn’t reach the translation service (blocked or offline).':'Error: '+esc(m);
+      tip.innerHTML='<div class="w">'+esc(hit.word)+'</div><div class="py">'+msg+'</div>';
+      place(hit.rect);
+    });
+  }
+  function onMove(e){
+    if(!e.target.closest||!e.target.closest('.textLayer')){clearTimeout(timer);if(cur)hide();return}
+    var x=e.clientX,y=e.clientY;
+    clearTimeout(timer);
+    timer=setTimeout(function(){
+      var hit=wordAt(x,y);
+      if(!hit){if(cur)hide();return}
+      if(hit.word===cur&&tip.classList.contains('show'))return;
+      show(hit);
+    },180);
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('click',function(e){
+    var hit=e.target.closest&&e.target.closest('.textLayer')?wordAt(e.clientX,e.clientY):null;
+    if(hit)show(hit);else hide();
+  });
+  window.addEventListener('scroll',hide,true);
+
+  /* ---------- PDF rendering ---------- */
+  async function renderAll(){
+    if(!pdfDoc)return;
+    var id=++renderId;hide();pagesEl.innerHTML='';
+    for(var n=1;n<=pdfDoc.numPages;n++){
+      if(id!==renderId)return;
+      setStatus('Rendering page '+n+' / '+pdfDoc.numPages);
+      var page=await pdfDoc.getPage(n);
+      var vp=page.getViewport({scale:scale});
+      var dpr=window.devicePixelRatio||1;
+      var div=document.createElement('div');div.className='page';
+      div.style.width=vp.width+'px';div.style.height=vp.height+'px';
+      var cv=document.createElement('canvas');
+      cv.width=Math.floor(vp.width*dpr);cv.height=Math.floor(vp.height*dpr);
+      cv.style.width=vp.width+'px';cv.style.height=vp.height+'px';
+      var tl=document.createElement('div');tl.className='textLayer';
+      tl.style.setProperty('--scale-factor',scale);
+      div.appendChild(cv);div.appendChild(tl);pagesEl.appendChild(div);
+      await page.render({canvasContext:cv.getContext('2d'),viewport:vp,transform:dpr!==1?[dpr,0,0,dpr,0,0]:null}).promise;
+      var tc=await page.getTextContent();
+      await pdfjsLib.renderTextLayer({textContentSource:tc,container:tl,viewport:vp,textDivs:[]}).promise;
+    }
+    if(id===renderId)setStatus(pdfDoc.numPages+' page'+(pdfDoc.numPages>1?'s':'')+' · hover a word');
+  }
+  async function load(file){
+    if(!file)return;setStatus('Loading…');if(!(await engineReady)){setStatus('PDF engine failed to load (check connection)');return}
+    setStatus('Loading…');
+    try{
+      var buf=await file.arrayBuffer();
+      pdfDoc=await pdfjsLib.getDocument({data:buf}).promise;
+      drop.style.display='none';
+      await renderAll();
+    }catch(err){console.error(err);setStatus('Couldn’t open that PDF: '+(err&&err.message||err))}
+  }
+  function zoom(d){
+    scale=Math.min(3,Math.max(.6,Math.round((scale+d)*10)/10));
+    $('zoomlbl').textContent=Math.round(scale*100)+'%';
+    renderAll();
+  }
+  $('zin').onclick=function(){zoom(.2)};
+  $('zout').onclick=function(){zoom(-.2)};
+  $('file').onchange=function(e){load(e.target.files[0]);e.target.value=''};
+  ['dragover','dragenter'].forEach(function(ev){document.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('over')})});
+  ['dragleave','drop'].forEach(function(ev){document.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('over')})});
+  document.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files.length)load(e.dataTransfer.files[0])});
+  $('zoomlbl').textContent=Math.round(scale*100)+'%';
+})();
+</script>
+</body>
+</html>
